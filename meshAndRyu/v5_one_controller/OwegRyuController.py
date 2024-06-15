@@ -107,6 +107,10 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         actions = [parser.OFPActionOutput(out_port)]
 
+        #------------------------
+        # Send packet information to the controller through the one-way gateway
+        # self.topology_to_controller_communication(dpid, src, dst, in_port)
+
         # install a flow to avoid packet_in next time
         if out_port != ofproto.OFPP_FLOOD:
             match = parser.OFPMatch(in_port=in_port, eth_dst=dst)
@@ -116,6 +120,7 @@ class SimpleSwitch13(app_manager.RyuApp):
                 self.add_flow(datapath, 1, match, actions, msg.buffer_id)
                 return
             else:
+                
                 self.add_flow(datapath, 1, match, actions)
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
@@ -124,3 +129,25 @@ class SimpleSwitch13(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
+        # ____________________________
+        # Receive flow installation instructions from the controller through the one-way gateway
+        #flow_mod_instructions = self.controller_to_topology_communication()
+
+        # Apply the received flow modification instructions
+        #self.add_flow(datapath, 1, match, flow_mod_instructions)
+    def OWEG_topology_to_controller(self, dpid, src, dst, in_port): #ip,protocol
+        """
+        Send packet information to the controller through the one-way gateway (OWEG1)
+        """
+        # Implement the logic to send packet information (dpid, src, dst, in_port)
+        # to the controller through the secure unidirectional path enforced by OWEG1
+        pass
+    def OWEG_controller_to_topology(self):
+        """
+        Receive flow installation instructions from the controller through the one-way gateway (OWEG2)
+        """
+        # Implement the logic to receive flow modification instructions
+        # from the controller through the secure unidirectional path enforced by OWEG2
+        # Return the received flow modification instructions
+       
+        return []
