@@ -32,10 +32,7 @@ class MeshWithOWEG(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(MeshWithOWEG, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
-        # Enable the Ryu Web UI
-        # self.app = WSGIApplication()
-        # self.ofctl = OFControllerAPI(self.app)
-        # self.app.register(url, self.ofctl)
+       
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):

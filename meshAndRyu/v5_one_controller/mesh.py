@@ -18,10 +18,10 @@ def topology():
     net = Mininet_wifi(controller=RemoteController, link=wmediumd, wmediumd_mode=interference)
 
     info("*** Creating nodes\n")
-    sta1 = net.addStation('sta1', mac='00:00:00:00:00:11', position='20,51,0')
-    sta2 = net.addStation('sta2', mac='00:00:00:00:00:12', position='51,51,0')
-    sta3 = net.addStation('sta3', mac='00:00:00:00:00:13', position='81,51,0')
-    sta4 = net.addStation('sta4', mac='00:00:00:00:00:14', position='105,51,0')
+    sta1 = net.addStation('sta1', mac='00:00:00:00:00:11',ip='10.0.0.1/8', position='20,51,0')
+    sta2 = net.addStation('sta2', mac='00:00:00:00:00:12',ip='10.0.0.2/8', position='51,51,0')
+    sta3 = net.addStation('sta3', mac='00:00:00:00:00:13',ip='10.0.0.3/8', position='81,51,0')
+    sta4 = net.addStation('sta4', mac='00:00:00:00:00:14',ip='10.0.0.4/8', position='105,51,0')
 
 
     ap1 = net.addAccessPoint('ap1', wlans=2, ssid='ssid1', position='30,60,0')

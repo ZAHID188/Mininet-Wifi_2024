@@ -1,18 +1,3 @@
-# Copyright (C) 2011 Nippon Telegraph and Telephone Corporation.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-# implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
@@ -21,21 +6,34 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
-#for the ui
-from ryu.app.wsgi import WSGIApplication
-# from ryu.app.ofctl_rest import OFControllerAPI, url
+from ryu.lib.packet import ipv4
 
 
-class SimpleSwitch13(app_manager.RyuApp):
+
+class MeshWithOWEG(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
-        super(SimpleSwitch13, self).__init__(*args, **kwargs)
+        super(MeshWithOWEG, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
-        # Enable the Ryu Web UI
-        # self.app = WSGIApplication()
-        # self.ofctl = OFControllerAPI(self.app)
-        # self.app.register(url, self.ofctl)
+        ip_range = '192.168.1.1'
+        num_stas = 2
+        self.allowed_ips = self.generate_ip_range(ip_range, num_stas) # Allowed IP addresses
+    
+    def generate_ip_range(self,start_ip, count):
+        base_ip = start_ip.split('.')
+        base_ip = [int(octet) for octet in base_ip]
+        ip_set = set()
+
+        for i in range(count):
+            ip = '.'.join(map(str, base_ip))
+            ip_set.add(ip)
+            base_ip[3] += 1  # Increment the last octet
+            if base_ip[3] > 255:  # Handle overflow to the next octet
+                base_ip[3] = 0
+                base_ip[2] += 1
+
+        return ip_set
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -43,13 +41,6 @@ class SimpleSwitch13(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
-        # install table-miss flow entry
-        #
-        # We specify NO BUFFER to max_len of the output action due to
-        # OVS bug. At this moment, if we specify a lesser number, e.g.,
-        # 128, OVS will send Packet-In with invalid buffer_id and
-        # truncated packet data. In that case, we cannot output packets
-        # correctly.  The bug has been fixed in OVS v2.1.0.
         match = parser.OFPMatch()
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
@@ -89,6 +80,12 @@ class SimpleSwitch13(app_manager.RyuApp):
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             # ignore lldp packet
             return
+        
+        ip_pkt = pkt.get_protocol(ipv4.ipv4)
+        if ip_pkt and ip_pkt.src not in self.allowed_ips:
+            self.logger.info("Packet from disallowed IP %s dropped", ip_pkt.src)
+            return
+
         dst = eth.dst
         src = eth.src
 
@@ -107,9 +104,8 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         actions = [parser.OFPActionOutput(out_port)]
 
-        #------------------------
         # Send packet information to the controller through the one-way gateway
-        # self.topology_to_controller_communication(dpid, src, dst, in_port)
+        self.OWEG_topology_to_controller(dpid, src, dst, in_port, ip_pkt.src if ip_pkt else None)
 
         # install a flow to avoid packet_in next time
         if out_port != ofproto.OFPP_FLOOD:
@@ -120,7 +116,6 @@ class SimpleSwitch13(app_manager.RyuApp):
                 self.add_flow(datapath, 1, match, actions, msg.buffer_id)
                 return
             else:
-                
                 self.add_flow(datapath, 1, match, actions)
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
@@ -129,25 +124,32 @@ class SimpleSwitch13(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
-        # ____________________________
+
         # Receive flow installation instructions from the controller through the one-way gateway
-        #flow_mod_instructions = self.controller_to_topology_communication()
+        flow_mod_instructions = self.OWEG_controller_to_topology(parser)
 
         # Apply the received flow modification instructions
-        #self.add_flow(datapath, 1, match, flow_mod_instructions)
-    def OWEG_topology_to_controller(self, dpid, src, dst, in_port): #ip,protocol
+        for instruction in flow_mod_instructions:
+            self.add_flow(datapath, 1, instruction['match'], instruction['actions'])
+
+    def OWEG_topology_to_controller(self, dpid, src, dst, in_port, src_ip):
         """
         Send packet information to the controller through the one-way gateway (OWEG1)
         """
-        # Implement the logic to send packet information (dpid, src, dst, in_port)
-        # to the controller through the secure unidirectional path enforced by OWEG1
-        pass
-    def OWEG_controller_to_topology(self):
-        """
-        Receive flow installation instructions from the controller through the one-way gateway (OWEG2)
-        """
-        # Implement the logic to receive flow modification instructions
-        # from the controller through the secure unidirectional path enforced by OWEG2
-        # Return the received flow modification instructions
-       
-        return []
+        if src_ip and src_ip in self.allowed_ips:
+            self.logger.info("Sending to OWEG1: dpid=%s, src=%s, dst=%s, in_port=%s, src_ip=%s", dpid, src, dst, in_port, src_ip)
+            # This is where you would send the data to the controller via OWEG
+            pass
+        else:
+            self.logger.info("Packet from disallowed IP %s dropped", src_ip)
+
+    def OWEG_controller_to_topology(self, parser):
+     
+        self.logger.info("Receiving from OWEG2")
+      
+        return [
+            {
+                'match': parser.OFPMatch(in_port=1, eth_dst='ff:ff:ff:ff:ff:ff'),
+                'actions': [parser.OFPActionOutput(2)]
+            }
+        ]
