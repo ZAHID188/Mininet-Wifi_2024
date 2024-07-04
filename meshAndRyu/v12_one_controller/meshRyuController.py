@@ -7,6 +7,9 @@ from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
 from ryu.lib.packet import ipv4
+import time
+import threading
+
 
 
 
@@ -17,9 +20,13 @@ class MeshWithOWEG(app_manager.RyuApp):
         super(MeshWithOWEG, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
         ip_range = '192.168.1.1'
-        num_stas = 4
+        num_stas = 6
         self.allowed_ips = self.generate_ip_range(ip_range, num_stas) # Allowed IP addresses
         print('Allowed IP by OWEG gateway: ' + ', '.join(self.allowed_ips))
+        #network state
+        self.network_state = {}
+        self.update_network_state_task = threading.Thread(target=self.update_network_state)
+        self.update_network_state_task.start()
     
     def generate_ip_range(self,start_ip, count):
         base_ip = start_ip.split('.')
@@ -35,6 +42,12 @@ class MeshWithOWEG(app_manager.RyuApp):
                 base_ip[2] += 1
 
         return ip_set
+   
+    def update_network_state(self):
+         while True:
+            print("Network_state- Mesh Accesspoints")
+            print(self.network_state)
+            time.sleep(10)
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -46,6 +59,26 @@ class MeshWithOWEG(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 0, match, actions)
+        #network state
+        if 'switches' not in self.network_state:
+            self.network_state['switches'] = {}
+        switch_info = {
+            'datapath_id': datapath.id,
+            'ports': {}
+        }
+        for port in  datapath.ports.values():
+            switch_info['ports'][port.port_no] = {
+                'port_no': port.port_no,
+                'hw_addr': port.hw_addr,
+                'name': port.name,
+                'config': port.config,
+                'state': port.state,
+                'curr': port.curr,
+                'advertised': port.advertised,
+                'supported': port.supported,
+                'peer': port.peer
+            }
+        self.network_state['switches'][datapath.id] = switch_info
 
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
         ofproto = datapath.ofproto
@@ -155,3 +188,24 @@ class MeshWithOWEG(app_manager.RyuApp):
                 'actions': [parser.OFPActionOutput(2)]
             }
         ]
+    @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
+    def port_status_handler(self, ev):
+        msg = ev.msg
+        datapath = msg.datapath
+
+        # Update port information in the network state
+        port_no = msg.desc.port_no
+        self.network_state['switches'][datapath.id]['ports'][port_no] = {
+            'port_no': msg.desc.port_no,
+            'hw_addr': msg.desc.hw_addr,
+            'name': msg.desc.name,
+            'config': msg.desc.config,
+            'state': msg.desc.state,
+            'curr': msg.desc.curr,
+            'advertised': msg.desc.advertised,
+            'supported': msg.desc.supported,
+            'peer': msg.desc.peer
+        }
+        print("Network_state- port status")
+
+        print(self.network_state)

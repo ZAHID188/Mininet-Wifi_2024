@@ -65,8 +65,8 @@ def topology():
     # configure_sflow(net)
 
     info("*** Running CLI\n")
-    CustomCLI(net)  # Use the custom CLI
-    # CLI(net)
+    # CustomCLI(net)  # Use the custom CLI
+    CLI(net)
     info("*** Stopping network\n")
     net.stop()
 
