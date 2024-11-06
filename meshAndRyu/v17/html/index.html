@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #messages {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 200px;
+            overflow-y: scroll;
+        }
+        #form {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<h1>WebSocket Client</h1>
+<div id="status">Connecting...</div>
+<div id="messages"></div>
+
+<form id="form">
+    <input type="text" id="messageInput" placeholder="Type a message..." required />
+    <button type="submit">Send</button>
+</form>
+
+<script>
+    const socket = new WebSocket('ws://127.0.0.1:8080/simpleswitch/ws');
+
+    // Update status when connection opens
+    socket.addEventListener('open', () => {
+        document.getElementById('status').textContent = 'Connected to server';
+        
+        // Simulate receiving live data every 2 seconds
+        setInterval(() => {
+            const simulatedMessage = 'Simulated live data at ' + new Date().toLocaleTimeString();
+            socket.send(simulatedMessage);
+        }, 2000);
+    });
+
+    // Display messages received from the server
+    socket.addEventListener('message', (event) => {
+        const messagesDiv = document.getElementById('messages');
+        const messageDiv = document.createElement('div');
+        messageDiv.textContent = 'Server: ' + event.data;
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight; // Scroll to the bottom
+    });
+
+    // Handle form submission
+    document.getElementById('form').addEventListener('submit', (event) => {
+        event.preventDefault(); // Prevent page refresh
+        const messageInput = document.getElementById('messageInput');
+        const message = messageInput.value;
+
+        // Send message to server
+        socket.send(message);
+        
+        // Display sent message in the messages area
+        const messagesDiv = document.getElementById('messages');
+        const sentMessageDiv = document.createElement('div');
+        sentMessageDiv.textContent = 'You: ' + message;
+        messagesDiv.appendChild(sentMessageDiv);
+        
+        // Clear input field
+        messageInput.value = '';
+        messagesDiv.scrollTop = messagesDiv.scrollHeight; // Scroll to the bottom
+    });
+
+    // Handle connection close
+    socket.addEventListener('close', () => {
+        document.getElementById('status').textContent = 'Disconnected from server';
+    });
+
+    // Handle errors
+    socket.addEventListener('error', (error) => {
+        console.error('WebSocket error:', error);
+    });
+</script>
+
+</body>
+</html>

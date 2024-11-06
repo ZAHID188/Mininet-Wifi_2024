@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Data Display</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        #data-display {
+            font-size: 18px;
+            margin-top: 20px;
+        }
+        .data-item {
+            margin-bottom: 10px;
+        }
+        .label {
+            font-weight: bold;
+            color: #555;
+        }
+        .value {
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Real-time Data Display</h1>
+        <div id="data-display">
+            <div class="data-item">
+                <span class="label">Temperature:</span>
+                <span class="value" id="temperature">-</span>°C
+            </div>
+            <div class="data-item">
+                <span class="label">Humidity:</span>
+                <span class="value" id="humidity">-</span>%
+            </div>
+            <div class="data-item">
+                <span class="label">Pressure:</span>
+                <span class="value" id="pressure">-</span> hPa
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Function to update the display
+        function updateDisplay(data) {
+            document.getElementById('temperature').textContent = data.temperature;
+            document.getElementById('humidity').textContent = data.humidity;
+            document.getElementById('pressure').textContent = data.pressure;
+        }
+
+        // Initial data fetch using HTTP
+        fetch('http://127.0.0.1:5000/get_latest_data')
+            .then(response => response.json())
+            .then(data => {
+                updateDisplay(data);
+            })
+            .catch(error => console.error('Error fetching initial data:', error));
+
+        // WebSocket connection for real-time updates
+        const socket = io('http://127.0.0.1:5000');
+
+        socket.on('connect', () => {
+            console.log('Connected to WebSocket');
+        });
+
+        socket.on('data_update', (data) => {
+            updateDisplay(data);
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from WebSocket');
+        });
+    </script>
+</body>
+</html>

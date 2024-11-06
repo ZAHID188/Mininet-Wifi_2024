@@ -2,7 +2,10 @@
 ## Here I will share my research related codes
 # MESH topology
 
-conda activate python
+<!-- conda activate python -->
+conda activate python312
+conda activate python38
+
 Python 3.8.19
 pip 24.2 from C:\mycodes\envs\python\lib\site-packages\pip (python 3.8)
 

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Packet Monitor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        #status {
+            padding: 10px;
+            margin-bottom: 20px;
+            background-color: #e3f2fd;
+            border-radius: 4px;
+        }
+        .packet-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+        }
+        .packet-table th, .packet-table td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        .packet-table th {
+            background-color: #2196F3;
+            color: white;
+        }
+        .packet-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        #messages {
+            height: 600px;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        .json-error {
+            color: #721c24;
+            background-color: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Network Packet Monitor</h1>
+        <div id="status">Connecting...</div>
+        <div id="messages"></div>
+    </div>
+
+<script>
+    const socket = new WebSocket('ws://127.0.0.1:8080/simpleswitch/ws');
+
+    function parsePacketData(data) {
+        try {
+            // Try to parse as JSON first
+            const jsonData = JSON.parse(data);
+            return {
+                type: 'json',
+                data: jsonData
+            };
+        } catch (e) {
+            // If not JSON, parse the ethernet packet string
+            if (data.startsWith('ethernet')) {
+                const packetParts = {};
+                
+                // Parse ethernet
+                const etherMatch = data.match(/ethernet\(([^)]+)\)/);
+                if (etherMatch) {
+                    packetParts.ethernet = parseKeyValuePairs(etherMatch[1]);
+                }
+
+                // Parse IPv6
+                const ipv6Match = data.match(/ipv6\(([^)]+)\)/);
+                if (ipv6Match) {
+                    packetParts.ipv6 = parseKeyValuePairs(ipv6Match[1]);
+                }
+
+                // Parse ICMPv6
+                const icmpv6Match = data.match(/icmpv6\(([^)]+)\)/);
+                if (icmpv6Match) {
+                    packetParts.icmpv6 = parseKeyValuePairs(icmpv6Match[1]);
+                }
+
+                return {
+                    type: 'packet',
+                    data: packetParts
+                };
+            }
+            return {
+                type: 'unknown',
+                data: data
+            };
+        }
+    }
+
+    function parseKeyValuePairs(str) {
+        const pairs = {};
+        str.split(',').forEach(pair => {
+            const [key, value] = pair.trim().split('=');
+            if (key && value) {
+                pairs[key] = value.replace(/'/g, '');
+            }
+        });
+        return pairs;
+    }
+
+    function createPacketTable(packetData) {
+        let html = '<table class="packet-table">';
+        
+        for (const [section, data] of Object.entries(packetData)) {
+            html += `
+                <tr>
+                    <th colspan="2">${section.toUpperCase()}</th>
+                </tr>
+            `;
+            
+            for (const [key, value] of Object.entries(data)) {
+                html += `
+                    <tr>
+                        <td><strong>${key}</strong></td>
+                        <td>${value}</td>
+                    </tr>
+                `;
+            }
+        }
+        
+        html += '</table>';
+        return html;
+    }
+
+    function displayMessage(data) {
+        const messagesDiv = document.getElementById('messages');
+        const parsedData = parsePacketData(data);
+        
+        let content = '';
+        if (parsedData.type === 'packet') {
+            content = createPacketTable(parsedData.data);
+        } else if (parsedData.type === 'json') {
+            content = `<div class="json-error">
+                <h3>JSON Message:</h3>
+                <pre>${JSON.stringify(parsedData.data, null, 2)}</pre>
+            </div>`;
+        } else {
+            content = `<div class="unknown-data">${data}</div>`;
+        }
+        
+        messagesDiv.innerHTML = content + messagesDiv.innerHTML;
+    }
+
+    socket.addEventListener('open', () => {
+        document.getElementById('status').textContent = 'Connected to server';
+    });
+
+    socket.addEventListener('message', (event) => {
+        displayMessage(event.data);
+    });
+
+    socket.addEventListener('close', () => {
+        document.getElementById('status').textContent = 'Disconnected from server';
+    });
+
+    socket.addEventListener('error', (error) => {
+        console.error('WebSocket error:', error);
+        document.getElementById('status').textContent = 'Connection error';
+    });
+</script>
+
+</body>
+</html>
