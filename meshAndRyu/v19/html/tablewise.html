@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Packet Monitor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            overflow-x: auto;
+        }
+        #status {
+            padding: 10px;
+            margin-bottom: 20px;
+            background-color: #e3f2fd;
+            border-radius: 4px;
+        }
+        .packet-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+            font-size: 14px;
+        }
+        .packet-table th, .packet-table td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+            white-space: nowrap;
+        }
+        .packet-table th {
+            background-color: #2196F3;
+            color: white;
+        }
+        .table-title {
+            color: #1565c0;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #1565c0;
+        }
+        .table-container {
+            margin-bottom: 30px;
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .ip-data {
+            color: #2e7d32;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Network Packet Monitor</h1>
+        <div id="status">Connecting...</div>
+        <div id="messages"></div> <!-- Container for individual packet tables -->
+    </div>
+
+<script>
+    const socket = new WebSocket('ws://127.0.0.1:8080/simpleswitch/ws');
+
+    function parsePacketData(data) {
+        try {
+            const jsonData = JSON.parse(data);
+            return {
+                type: 'json',
+                data: jsonData
+            };
+        } catch (e) {
+            if (data.startsWith('ethernet')) {
+                const parsedData = {
+                    ipv4: {},
+                    ipv6: {}
+                };
+
+                // Parse IPv4 section
+                const ipv4Match = data.match(/ipv4\(([^)]+)\)/);
+                if (ipv4Match) {
+                    parsedData.ipv4 = parseKeyValuePairs(ipv4Match[1]);
+                    return {
+                        type: 'ipv4',
+                        data: parsedData.ipv4
+                    };
+                }
+
+                // Parse IPv6 section
+                const ipv6Match = data.match(/ipv6\(([^)]+)\)/);
+                if (ipv6Match) {
+                    parsedData.ipv6 = parseKeyValuePairs(ipv6Match[1]);
+                    return {
+                        type: 'ipv6',
+                        data: parsedData.ipv6
+                    };
+                }
+            }
+            return {
+                type: 'unknown',
+                data: data
+            };
+        }
+    }
+
+    function parseKeyValuePairs(str) {
+        const pairs = {};
+        str.split(',').forEach(pair => {
+            const [key, value] = pair.trim().split('=');
+            if (key && value) {
+                pairs[key] = value.replace(/'/g, '');
+            }
+        });
+        return pairs;
+    }
+
+    function createPacketTable(packetData, packetType) {
+        const messagesContainer = document.getElementById('messages');
+        const tableContainer = document.createElement('div');
+        tableContainer.className = 'table-container';
+
+        const title = document.createElement('h2');
+        title.className = 'table-title';
+        title.textContent = `${packetType} Packet`;
+
+        const table = document.createElement('table');
+        table.className = 'packet-table';
+        
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        const headers = packetType === 'IPv4' 
+            ? ['Timestamp', 'Source IP', 'Destination IP', 'Protocol', 'TTL', 'ToS', 'ID', 'IHL', 'Offset', 'Flags', 'Length', 'Version']
+            : ['Timestamp', 'Source IP', 'Destination IP', 'Ext Headers', 'Flow Label', 'Hop Limit', 'Next Header', 'Payload Length', 'Traffic Class', 'Version'];
+
+        headers.forEach(headerText => {
+            const th = document.createElement('th');
+            th.textContent = headerText;
+            headerRow.appendChild(th);
+        });
+        
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        const row = document.createElement('tr');
+        const timestamp = new Date().toLocaleTimeString();
+        
+        const columns = packetType === 'IPv4'
+            ? [
+                timestamp,
+                packetData.src || '',
+                packetData.dst || '',
+                packetData.proto || '',
+                packetData.ttl || '',
+                packetData.tos || '',
+                packetData.id || '',
+                packetData.ihl || '',
+                packetData.offset || '',
+                packetData.flags || '',
+                packetData.total_length || '',
+                packetData.version || ''
+            ]
+            : [
+                timestamp,
+                packetData.src || '',
+                packetData.dst || '',
+                packetData.ext_hdrs || '[]',
+                packetData.flow_label || '',
+                packetData.hop_limit || '',
+                packetData.nxt || '',
+                packetData.payload_length || '',
+                packetData.traffic_class || '',
+                packetData.version || ''
+            ];
+
+        columns.forEach((value, index) => {
+            const td = document.createElement('td');
+            td.textContent = value;
+            if (index === 1 || index === 2) {
+                td.className = 'ip-data';
+            }
+            row.appendChild(td);
+        });
+
+        tbody.appendChild(row);
+        table.appendChild(tbody);
+        tableContainer.appendChild(title);
+        tableContainer.appendChild(table);
+        messagesContainer.insertBefore(tableContainer, messagesContainer.firstChild);
+    }
+
+    socket.addEventListener('open', () => {
+        document.getElementById('status').textContent = 'Connected to server';
+    });
+
+    socket.addEventListener('message', (event) => {
+        const parsedData = parsePacketData(event.data);
+        if (parsedData.type === 'ipv4') {
+            createPacketTable(parsedData.data, 'IPv4');
+        } else if (parsedData.type === 'ipv6') {
+            createPacketTable(parsedData.data, 'IPv6');
+        }
+    });
+
+    socket.addEventListener('close', () => {
+        document.getElementById('status').textContent = 'Disconnected from server';
+    });
+
+    socket.addEventListener('error', (error) => {
+        console.error('WebSocket error:', error);
+        document.getElementById('status').textContent = 'Connection error';
+    });
+</script>
+
+</body>
+</html>

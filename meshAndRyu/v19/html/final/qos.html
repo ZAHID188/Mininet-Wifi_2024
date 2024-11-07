@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Statistics</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Real-time Dataset for DQL Model</h2>
+<table id="flowStatsTable">
+    <thead>
+        <tr>
+            <th>DPID</th>
+            <th>Throughput (bps)</th>
+            <th>Latency (ms)</th>
+            <th>PDR</th>
+            <th>Packet Count</th>
+            <th>Byte Count</th>
+        </tr>
+    </thead>
+    <tbody>
+        <!-- Data will be added here dynamically -->
+    </tbody>
+
+
+<script>
+    const flowStatsTable = document.getElementById("flowStatsTable").getElementsByTagName("tbody")[0];
+
+    // Connect to WebSocket
+    const socket = new WebSocket("ws://127.0.0.1:8080/simpleswitch/ws");
+
+    socket.onmessage = function(event) {
+        const message = JSON.parse(event.data);
+
+        if (message.type === "flow_stats") {
+            addFlowStatsRow(message.data);
+        } 
+    };
+
+    function addFlowStatsRow(data) {
+        const row = flowStatsTable.insertRow();
+        row.innerHTML = `
+            <td>${data.dpid}</td>
+            <td>${data.throughput}</td>
+            <td>${(data.latency / 1000).toFixed(2)}</td>
+            <td>${data.pdr}</td>
+            <td>${data.packet_count}</td>
+            <td>${data.byte_count}</td>
+        `;
+    }
+</script>
+
+</body>
+</html>

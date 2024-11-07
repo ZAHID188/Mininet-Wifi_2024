@@ -74,27 +74,39 @@
     };
 
     function addFlowStatsRow(data) {
-        const row = flowStatsTable.insertRow();
-        row.innerHTML = `
-            <td>${data.dpid}</td>
-            <td>${data.throughput}</td>
-            <td>${(data.latency / 1000).toFixed(2)}</td>
-            <td>${data.pdr}</td>
-            <td>${data.packet_count}</td>
-            <td>${data.byte_count}</td>
-        `;
+        let row = findRow(flowStatsTable, data.dpid);
+        if (!row) {
+            row = flowStatsTable.insertRow();
+            row.insertCell(0).textContent = data.dpid;
+        }
+        row.cells[1].textContent = data.throughput;
+        row.cells[2].textContent = (data.latency / 1000).toFixed(2);
+        row.cells[3].textContent = data.pdr;
+        row.cells[4].textContent = data.packet_count;
+        row.cells[5].textContent = data.byte_count;
     }
 
     function addPortStatsRow(data) {
-        const row = portStatsTable.insertRow();
-        row.innerHTML = `
-            <td>${data.dpid}</td>
-            <td>${data.port_no}</td>
-            <td>${data.rx_packets}</td>
-            <td>${data.tx_packets}</td>
-            <td>${data.rx_bytes}</td>
-            <td>${data.tx_bytes}</td>
-        `;
+        let row = findRow(portStatsTable, data.dpid, data.port_no);
+        if (!row) {
+            row = portStatsTable.insertRow();
+            row.insertCell(0).textContent = data.dpid;
+            row.insertCell(1).textContent = data.port_no;
+        }
+        row.cells[2].textContent = data.rx_packets;
+        row.cells[3].textContent = data.tx_packets;
+        row.cells[4].textContent = data.rx_bytes;
+        row.cells[5].textContent = data.tx_bytes;
+    }
+
+    function findRow(table, dpid, portNo) {
+        for (let i = 0; i < table.rows.length; i++) {
+            const row = table.rows[i];
+            if (row.cells[0].textContent === dpid && (portNo === undefined || row.cells[1].textContent == portNo)) {
+                return row;
+            }
+        }
+        return null;
     }
 </script>
 

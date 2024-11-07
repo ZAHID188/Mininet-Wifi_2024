@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Statistics</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Flow Stats</h2>
+<table id="flowStatsTable">
+    <thead>
+        <tr>
+            <th>DPID</th>
+            <th>Throughput (bps)</th>
+            <th>Latency (ms)</th>
+            <th>PDR</th>
+            <th>Packet Count</th>
+            <th>Byte Count</th>
+        </tr>
+    </thead>
+    <tbody>
+        <!-- Data will be added here dynamically -->
+    </tbody>
+</table>
+
+<h2>Port Stats</h2>
+<table id="portStatsTable">
+    <thead>
+        <tr>
+            <th>DPID</th>
+            <th>Port No</th>
+            <th>RX Packets</th>
+            <th>TX Packets</th>
+            <th>RX Bytes</th>
+            <th>TX Bytes</th>
+        </tr>
+    </thead>
+    <tbody>
+        <!-- Data will be added here dynamically -->
+    </tbody>
+</table>
+
+<script>
+    const flowStatsTable = document.getElementById("flowStatsTable").getElementsByTagName("tbody")[0];
+    const portStatsTable = document.getElementById("portStatsTable").getElementsByTagName("tbody")[0];
+
+    // Connect to WebSocket
+    const socket = new WebSocket("ws://127.0.0.1:8080/simpleswitch/ws");
+
+    socket.onmessage = function(event) {
+        const message = JSON.parse(event.data);
+
+        if (message.type === "flow_stats") {
+            addFlowStatsRow(message.data);
+        } else if (message.type === "port_stats") {
+            addPortStatsRow(message.data);
+        }
+    };
+
+    function addFlowStatsRow(data) {
+        let row = findRow(flowStatsTable, data.dpid);
+        if (!row) {
+            row = flowStatsTable.insertRow();
+            row.insertCell(0).textContent = data.dpid;
+        }
+        row.cells[1].textContent = data.throughput;
+        row.cells[2].textContent = (data.latency / 1000).toFixed(2);
+        row.cells[3].textContent = data.pdr;
+        row.cells[4].textContent = data.packet_count;
+        row.cells[5].textContent = data.byte_count;
+    }
+
+    function addPortStatsRow(data) {
+        let row = findRow(portStatsTable, data.dpid, data.port_no);
+        if (!row) {
+            row = portStatsTable.insertRow();
+            row.insertCell(0).textContent = data.dpid;
+            row.insertCell(1).textContent = data.port_no;
+        }
+        row.cells[2].textContent = data.rx_packets;
+        row.cells[3].textContent = data.tx_packets;
+        row.cells[4].textContent = data.rx_bytes;
+        row.cells[5].textContent = data.tx_bytes;
+    }
+
+    function findRow(table, dpid, portNo) {
+        for (let i = 0; i < table.rows.length; i++) {
+            const row = table.rows[i];
+            if (row.cells[0].textContent === dpid && (portNo === undefined || row.cells[1].textContent == portNo)) {
+                return row;
+            }
+        }
+        return null;
+    }
+</script>
+
+</body>
+</html>
