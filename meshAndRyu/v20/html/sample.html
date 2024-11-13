@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Packet Information</title>
+    <style>
+        table {
+            width: 50%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Packet Information</h2>
+<div id="status">Connecting...</div>
+
+<table>
+    <tr>
+        <th>Protocol Layer</th>
+        <th>Field</th>
+        <th>Value</th>
+    </tr>
+    <tr>
+        <td rowspan="3">Ethernet</td>
+        <td>Destination MAC</td>
+        <td>33:33:00:00:00:02</td>
+    </tr>
+    <tr>
+        <td>Source MAC</td>
+        <td>00:00:00:00:00:14</td>
+    </tr>
+    <tr>
+        <td>EtherType</td>
+        <td>34525</td>
+    </tr>
+    <tr>
+        <td rowspan="3">IPv6</td>
+        <td>Destination Address</td>
+        <td>ff02::2</td>
+    </tr>
+    <tr>
+        <td>Source Address</td>
+        <td>fe80::200:ff:fe00:14</td>
+    </tr>
+    <tr>
+        <td>Hop Limit</td>
+        <td>255</td>
+    </tr>
+    <tr>
+        <td rowspan="3">ICMPv6</td>
+        <td>Type</td>
+        <td>133 (Router Solicitation)</td>
+    </tr>
+    <tr>
+        <td>Checksum</td>
+        <td>31494</td>
+    </tr>
+    <tr>
+        <td>Source Link-Layer Address</td>
+        <td>00:00:00:00:00:14</td>
+    </tr>
+</table>
+
+</body>
+</html>

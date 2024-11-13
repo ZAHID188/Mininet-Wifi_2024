@@ -51,6 +51,12 @@ class MeshTopologyController(app_manager.RyuApp):
         self.mac_to_port = {}
         self.datapaths = {}  #to store datapaths
         self.last_stats={}
+        #throughput
+        self.port_stats = {}
+        self.port_speed = {}
+        self.flow_stats = {}
+        self.flow_speed = {}
+        self.sleep_time = 5 
         # Start monitoring thread
         self.monitor_thread = hub.spawn(self._monitor)
 
@@ -83,10 +89,15 @@ class MeshTopologyController(app_manager.RyuApp):
         datapath.send_msg(echo_req)
         # self.logger.info(f"Sent echo request to switch {datapath.id}")
         #portstatus 
+
+        # Request flow stats
+        req = parser.OFPFlowStatsRequest(datapath)
+        datapath.send_msg(req)
+        #Port request
         Portreq = parser.OFPPortStatsRequest(datapath, 0, datapath.ofproto.OFPP_ANY)
         datapath.send_msg(Portreq)
 
-        
+    
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
         datapath = ev.msg.datapath
@@ -189,99 +200,76 @@ class MeshTopologyController(app_manager.RyuApp):
             strDPid=str(dpid)
             latency= f"{latency:.2f}"
             latency=str(latency)
-            # Broadcast metrics to WebSocket clients
-            self.logger.info("DPID echo %s", dpid)
-
+            # Update latency
             self.qos_metrics.update_metrics(dpid, latency)
-            metrics = self.qos_metrics.get_metrics(dpid)
-            metrics['dpid'] = strDPid
-            self._ws_manager.broadcast(json.dumps({
-                'type': 'qos_metrics',
-                'data': metrics
-            }))
-
         except Exception as e:
             self.logger.error(f'Error processing echo reply: {e}')
 
 
-        
-            #port status off
-    # @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
-    # def _port_stats_reply_handler(self, ev):
-    #     body = ev.msg.body
-    #     dpid = ev.msg.datapath.id
-    #     strdpid=str(dpid)
-    #     for stat in body:
-    #         port_no = stat.port_no
-    #         rx_packets = stat.rx_packets
-    #         tx_packets = stat.tx_packets
-    #         rx_bytes = stat.rx_bytes
-    #         tx_bytes = stat.tx_bytes
-            
-    #         # Send port statistics via WebSocket
-    #         port_stats = {
-    #             'dpid': strdpid,
-    #             'port_no': port_no,
-    #             'rx_packets': rx_packets,
-    #             'tx_packets': tx_packets,
-    #             'rx_bytes': rx_bytes,
-    #             'tx_bytes': tx_bytes
-    #         }
-    #         self._ws_manager.broadcast(json.dumps({
-    #             'type': 'port_stats',
-    #             'data': port_stats
-    #         }))
+    # for throughput
+    def _save_stats(self, dist, key, value, length):
+        if key not in dist:
+            dist[key] = []
+        dist[key].append(value)
+
+        if len(dist[key]) > length:
+            dist[key].pop(0)
+
+    def _calculate_speed(self, now, pre, period):
+        if period:
+            return (now - pre) / period
+        else:
+            return 0
+
+    def _get_speed_in_mbps(self, speed):
+        return speed * 8 / 1000000  # Convert to Mbps
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
         body = ev.msg.body
         dpid = ev.msg.datapath.id
-        strdpid = str(dpid)
-        
-        # Initialize storage for last stats if not exists
-        self.logger.info("DPID port %s", dpid)
-
-        if dpid not in self.last_stats:
-            self.last_stats[dpid] = {}
-            
-        curr_time = time.time()
-        
-        for stat in body:
+        significant_speed_threshold = 2.0  # Threshold in Mbps to filter out noise
+        for stat in sorted(body, key=lambda x: x.port_no):
             port_no = stat.port_no
-            rx_bytes = stat.rx_bytes
-            tx_bytes = stat.tx_bytes
-            
-            # Calculate throughput if we have previous measurements
-            if port_no in self.last_stats[dpid]:
-                time_diff = curr_time - self.last_stats[dpid][port_no]['timestamp']
-                rx_throughput = (rx_bytes - self.last_stats[dpid][port_no]['rx_bytes']) * 8 / time_diff  # bps
-                tx_throughput = (tx_bytes - self.last_stats[dpid][port_no]['tx_bytes']) * 8 / time_diff  # bps
+            if port_no != ev.msg.datapath.ofproto.OFPP_LOCAL:
+                key = (dpid, port_no)
+                value = (stat.tx_bytes, stat.rx_bytes, stat.tx_errors,
+                        stat.rx_errors, stat.duration_sec, stat.duration_nsec)
+
+                self._save_stats(self.port_stats, key, value, 5)
+
+                # Calculate port speed
+                pre = 0
+                period = self.sleep_time
+                tmp = self.port_stats[key]
+                if len(tmp) > 1:
+                    pre = tmp[-2][0] + tmp[-2][1]  # tx_bytes + rx_bytes
+                    
+                speed = self._calculate_speed(stat.tx_bytes + stat.rx_bytes,
+                                            pre, period)
                 
-                # Convert to Mbps
-                rx_throughput_mbps = rx_throughput / 1000000
-                tx_throughput_mbps = tx_throughput / 1000000
+                self._save_stats(self.port_speed, key, speed, 5)
                 
-                # Send throughput statistics via WebSocket
-                throughput_stats = {
-                    'dpid': strdpid,
-                    'port_no': port_no,
-                    'rx_throughput_mbps': round(rx_throughput_mbps, 2),
-                    'tx_throughput_mbps': round(tx_throughput_mbps, 2)
-                }
-                self.logger.info("DPID port %s", throughput_stats)
+                # Calculate throughput in Mbps
+                speed_mbps = self._get_speed_in_mbps(speed)
+
+                # Update QoS metrics only if speed exceeds the threshold
+                if speed_mbps >= significant_speed_threshold:
+                    self.qos_metrics.update_throughput(dpid, port_no, speed_mbps)
+                    # self.logger.info("Significant Speed (Mbps): %s", speed_mbps)
 
                 
-                # self._ws_manager.broadcast(json.dumps({
-                #     'type': 'throughput_stats',
-                #     'data': throughput_stats
-                # }))
-            
-            # Store current stats for next calculation
-            self.last_stats[dpid][port_no] = {
-                'rx_bytes': rx_bytes,
-                'tx_bytes': tx_bytes,
-                'timestamp': curr_time
-            }
+                
+        # self.logger.info(" port %s", dpid )
+        # Broadcast metrics
+        metrics = self.qos_metrics.get_metrics(dpid)
+        metrics['dpid'] = str(dpid)
+        self._ws_manager.broadcast(json.dumps({
+            'type': 'qos_metrics',
+            'data': metrics
+        }))
+
+
 
 class SimpleSwitchWebSocketController(ControllerBase):
     def __init__(self, req, link, data, **config):
@@ -300,12 +288,20 @@ class SimpleSwitchWebSocketController(ControllerBase):
 class QoSMetrics:
     def __init__(self):
         self.latencies = defaultdict(list)
-        
-    def update_metrics(self, dpid,latency):
+        self.throughputs = defaultdict(dict)  # {dpid: {port_no: throughput}}
+
+    def update_metrics(self, dpid, latency):
         self.latencies[dpid] = latency
-        
-    def get_metrics(self, dpid):        
+
+    def update_throughput(self, dpid, port_no, throughput):
+        # Check if the new throughput value is different from the current one
+        if throughput != 0 and self.throughputs[dpid].get(port_no) != throughput:
+            self.throughputs[dpid][port_no] = throughput
+
+    def get_metrics(self, dpid):
+        total_throughput = sum(self.throughputs[dpid].values()) if dpid in self.throughputs else 0
         return {
-            'throughput': "throughput",
             'latency': self.latencies[dpid],
+            'throughput': f"{total_throughput:.2f}",
+            'port_throughputs': {port: f"{speed:.2f}" for port, speed in self.throughputs[dpid].items()}
         }

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Port Statistics</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Port Stats</h2>
+<table id="portStatsTable">
+    <thead>
+        <tr>
+            <th>DPID</th>
+            <th>Port No</th>
+            <th>RX Packets</th>
+            <th>TX Packets</th>
+            <th>RX Bytes</th>
+            <th>TX Bytes</th>
+        </tr>
+    </thead>
+    <tbody>
+        <!-- Data will be added here dynamically -->
+    </tbody>
+</table>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Port Statistics</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Port Stats</h2>
+<table id="portStatsTable">
+    <thead>
+        <tr>
+            <th>DPID</th>
+            <th>Port No</th>
+            <th>RX Packets</th>
+            <th>TX Packets</th>
+            <th>RX Bytes</th>
+            <th>TX Bytes</th>
+        </tr>
+    </thead>
+    <tbody>
+        <!-- Data will be added here dynamically -->
+    </tbody>
+</table>
+
+<script>
+    const portStatsTable = document.getElementById("portStatsTable").getElementsByTagName("tbody")[0];
+
+    // Connect to WebSocket
+    const socket = new WebSocket("ws://127.0.0.1:8080/simpleswitch/ws");
+
+    socket.onmessage = function(event) {
+        console.log('Received message:', event.data); // Log raw message
+        const message = JSON.parse(event.data);
+        console.log('Parsed message:', message); // Log parsed message
+
+        if (message.type === "port_stats") {
+            addPortStatsRow(message.data);
+        }
+    };
+
+    function addPortStatsRow(data) {
+        console.log(`Processing Port Stats for DPID: ${data.dpid}, Port No: ${data.port_no}`);
+        let row = findRow(portStatsTable, data.dpid, data.port_no);
+        if (!row) {
+            // If row doesn't exist, create a new one
+            row = portStatsTable.insertRow();
+            row.insertCell(0).textContent = data.dpid;
+            row.insertCell(1).textContent = data.port_no;
+            console.log(`Added new row for DPID: ${data.dpid}, Port No: ${data.port_no}`);
+        } else {
+            console.log(`Updating existing row for DPID: ${data.dpid}, Port No: ${data.port_no}`);
+        }
+        // Update the row's data
+        row.cells[2].textContent = data.rx_packets;
+        row.cells[3].textContent = data.tx_packets;
+        row.cells[4].textContent = data.rx_bytes;
+        row.cells[5].textContent = data.tx_bytes;
+    }
+
+    function findRow(table, dpid, portNo) {
+        for (let i = 0; i < table.rows.length; i++) {
+            const row = table.rows[i];
+            if (row.cells[0].textContent === dpid && row.cells[1].textContent == portNo) {
+                return row;
+            }
+        }
+        return null;
+    }
+</script>
+
+</body>
+</html>
+
+</body>
+</html>

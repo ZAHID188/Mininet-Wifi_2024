@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Packet Monitor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            overflow-x: auto;
+        }
+        #status {
+            padding: 10px;
+            margin-bottom: 20px;
+            background-color: #e3f2fd;
+            border-radius: 4px;
+        }
+        .packet-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+            font-size: 14px;
+        }
+        .packet-table th, .packet-table td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+            white-space: nowrap;
+        }
+        .packet-table th {
+            background-color: #2196F3;
+            color: white;
+            position: sticky;
+            top: 0;
+        }
+        .packet-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        .table-container {
+            margin-bottom: 30px;
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .table-title {
+            color: #1565c0;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #1565c0;
+        }
+        #messages {
+            height: 800px;
+            overflow: auto;
+            padding: 10px;
+        }
+        .timestamp {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .ip-data {
+            color: #2e7d32;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Network Packet Monitor</h1>
+        <div id="status">Connecting...</div>
+        <div id="messages">
+            <div class="table-container">
+                <h2 class="table-title">IPv4 Packets</h2>
+                <table class="packet-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Source IP</th>
+                            <th>Destination IP</th>
+                            <th>Protocol</th>
+                            <th>TTL</th>
+                            <th>ToS</th>
+                            <th>ID</th>
+                            <th>IHL</th>
+                            <th>Offset</th>
+                            <th>Flags</th>
+                            <th>Length</th>
+                            <th>Version</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ipv4TableBody">
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-container">
+                <h2 class="table-title">IPv6 Packets</h2>
+                <table class="packet-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Source IP</th>
+                            <th>Destination IP</th>
+                            <th>Ext Headers</th>
+                            <th>Flow Label</th>
+                            <th>Hop Limit</th>
+                            <th>Next Header</th>
+                            <th>Payload Length</th>
+                            <th>Traffic Class</th>
+                            <th>Version</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ipv6TableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+<script>
+    const socket = new WebSocket('ws://127.0.0.1:8080/simpleswitch/ws');
+
+    function parsePacketData(data) {
+        try {
+            const jsonData = JSON.parse(data);
+            return {
+                type: 'json',
+                data: jsonData
+            };
+        } catch (e) {
+            if (data.startsWith('ethernet')) {
+                const parsedData = {
+                    ipv4: {},
+                    ipv6: {}
+                };
+
+                // Parse IPv4 section
+                const ipv4Match = data.match(/ipv4\(([^)]+)\)/);
+                if (ipv4Match) {
+                    parsedData.ipv4 = parseKeyValuePairs(ipv4Match[1]);
+                    return {
+                        type: 'ipv4',
+                        data: parsedData.ipv4
+                    };
+                }
+
+                // Parse IPv6 section
+                const ipv6Match = data.match(/ipv6\(([^)]+)\)/);
+                if (ipv6Match) {
+                    parsedData.ipv6 = parseKeyValuePairs(ipv6Match[1]);
+                    return {
+                        type: 'ipv6',
+                        data: parsedData.ipv6
+                    };
+                }
+            }
+            return {
+                type: 'unknown',
+                data: data
+            };
+        }
+    }
+
+    function parseKeyValuePairs(str) {
+        const pairs = {};
+        str.split(',').forEach(pair => {
+            const [key, value] = pair.trim().split('=');
+            if (key && value) {
+                pairs[key] = value.replace(/'/g, '');
+            }
+        });
+        return pairs;
+    }
+
+    function addIPv4PacketToTable(packetData) {
+        const tableBody = document.getElementById('ipv4TableBody');
+        const row = document.createElement('tr');
+        
+        const timestamp = new Date().toLocaleTimeString();
+        
+        const columns = [
+            timestamp,
+            packetData.src || '',
+            packetData.dst || '',
+            packetData.proto || '',
+            packetData.ttl || '',
+            packetData.tos || '',
+            packetData.id || '',
+            packetData.ihl || '',
+            packetData.offset || '',
+            packetData.flags || '',
+            packetData.total_length || '',
+            packetData.version || ''
+        ];
+
+        columns.forEach((value, index) => {
+            const td = document.createElement('td');
+            td.textContent = value;
+            if (index === 1 || index === 2) {
+                td.className = 'ip-data';
+            }
+            row.appendChild(td);
+        });
+
+        if (tableBody.firstChild) {
+            tableBody.insertBefore(row, tableBody.firstChild);
+        } else {
+            tableBody.appendChild(row);
+        }
+
+        limitTableRows(tableBody);
+    }
+
+    function addIPv6PacketToTable(packetData) {
+        const tableBody = document.getElementById('ipv6TableBody');
+        const row = document.createElement('tr');
+        
+        const timestamp = new Date().toLocaleTimeString();
+        
+        const columns = [
+            timestamp,
+            packetData.src || '',
+            packetData.dst || '',
+            packetData.ext_hdrs || '[]',
+            packetData.flow_label || '',
+            packetData.hop_limit || '',
+            packetData.nxt || '',
+            packetData.payload_length || '',
+            packetData.traffic_class || '',
+            packetData.version || ''
+        ];
+
+        columns.forEach((value, index) => {
+            const td = document.createElement('td');
+            td.textContent = value;
+            if (index === 1 || index === 2) {
+                td.className = 'ip-data';
+            }
+            row.appendChild(td);
+        });
+
+        if (tableBody.firstChild) {
+            tableBody.insertBefore(row, tableBody.firstChild);
+        } else {
+            tableBody.appendChild(row);
+        }
+
+        limitTableRows(tableBody);
+    }
+
+    function limitTableRows(tableBody) {
+        const maxRows = 50;
+        while (tableBody.children.length > maxRows) {
+            tableBody.removeChild(tableBody.lastChild);
+        }
+    }
+
+    socket.addEventListener('open', () => {
+        document.getElementById('status').textContent = 'Connected to server';
+    });
+
+    socket.addEventListener('message', (event) => {
+        const parsedData = parsePacketData(event.data);
+        if (parsedData.type === 'ipv4') {
+            addIPv4PacketToTable(parsedData.data);
+        } else if (parsedData.type === 'ipv6') {
+            addIPv6PacketToTable(parsedData.data);
+        }
+    });
+
+    socket.addEventListener('close', () => {
+        document.getElementById('status').textContent = 'Disconnected from server';
+    });
+
+    socket.addEventListener('error', (error) => {
+        console.error('WebSocket error:', error);
+        document.getElementById('status').textContent = 'Connection error';
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Packet Monitor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            overflow-x: auto;
+        }
+        #status {
+            padding: 10px;
+            margin-bottom: 20px;
+            background-color: #e3f2fd;
+            border-radius: 4px;
+        }
+        .packet-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+            font-size: 14px;
+        }
+        .packet-table th, .packet-table td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+            white-space: nowrap;
+        }
+        .packet-table th {
+            background-color: #2196F3;
+            color: white;
+        }
+        .table-title {
+            color: #1565c0;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #1565c0;
+        }
+        .table-container {
+            margin-bottom: 30px;
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .ip-data {
+            color: #2e7d32;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Network Packet Monitor</h1>
+        <div id="status">Connecting...</div>
+        <div id="messages"></div> <!-- Container for individual packet tables -->
+    </div>
+
+<script>
+    const socket = new WebSocket('ws://127.0.0.1:8080/simpleswitch/ws');
+
+    function parsePacketData(data) {
+        try {
+            const jsonData = JSON.parse(data);
+            return {
+                type: 'json',
+                data: jsonData
+            };
+        } catch (e) {
+            if (data.startsWith('ethernet')) {
+                const parsedData = {
+                    ipv4: {},
+                    ipv6: {}
+                };
+
+                // Parse IPv4 section
+                const ipv4Match = data.match(/ipv4\(([^)]+)\)/);
+                if (ipv4Match) {
+                    parsedData.ipv4 = parseKeyValuePairs(ipv4Match[1]);
+                    return {
+                        type: 'ipv4',
+                        data: parsedData.ipv4
+                    };
+                }
+
+                // Parse IPv6 section
+                const ipv6Match = data.match(/ipv6\(([^)]+)\)/);
+                if (ipv6Match) {
+                    parsedData.ipv6 = parseKeyValuePairs(ipv6Match[1]);
+                    return {
+                        type: 'ipv6',
+                        data: parsedData.ipv6
+                    };
+                }
+            }
+            return {
+                type: 'unknown',
+                data: data
+            };
+        }
+    }
+
+    function parseKeyValuePairs(str) {
+        const pairs = {};
+        str.split(',').forEach(pair => {
+            const [key, value] = pair.trim().split('=');
+            if (key && value) {
+                pairs[key] = value.replace(/'/g, '');
+            }
+        });
+        return pairs;
+    }
+
+    function createPacketTable(packetData, packetType) {
+        const messagesContainer = document.getElementById('messages');
+        const tableContainer = document.createElement('div');
+        tableContainer.className = 'table-container';
+
+        const title = document.createElement('h2');
+        title.className = 'table-title';
+        title.textContent = `${packetType} Packet`;
+
+        const table = document.createElement('table');
+        table.className = 'packet-table';
+        
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        headerRow.innerHTML = `
+            <th>Protocol Layer</th>
+            <th>Field</th>
+            <th>Value</th>
+        `;
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+
+        // Populate the table based on packet type
+        if (packetType === 'IPv4') {
+            tbody.innerHTML += `
+                <tr>
+                    <td rowspan="11">IPv4</td>
+                    <td>Source IP</td>
+                    <td>${packetData.src || ''}</td>
+                </tr>
+                <tr>
+                    <td>Destination IP</td>
+                    <td>${packetData.dst || ''}</td>
+                </tr>
+                <tr>
+                    <td>Protocol</td>
+                    <td>${packetData.proto || ''}</td>
+                </tr>
+                <tr>
+                    <td>TTL</td>
+                    <td>${packetData.ttl || ''}</td>
+                </tr>
+                <tr>
+                    <td>ToS</td>
+                    <td>${packetData.tos || ''}</td>
+                </tr>
+                <tr>
+                    <td>ID</td>
+                    <td>${packetData.id || ''}</td>
+                </tr>
+                <tr>
+                    <td>IHL</td>
+                    <td>${packetData.ihl || ''}</td>
+                </tr>
+                <tr>
+                    <td>Offset</td>
+                    <td>${packetData.offset || ''}</td>
+                </tr>
+                <tr>
+                    <td>Flags</td>
+                    <td>${packetData.flags || ''}</td>
+                </tr>
+                <tr>
+                    <td>Length</td>
+                    <td>${packetData.total_length || ''}</td>
+                </tr>
+                <tr>
+                    <td>Version</td>
+                    <td>${packetData.version || ''}</td>
+                </tr>
+            `;
+        } else if (packetType === 'IPv6') {
+            tbody.innerHTML += `
+                <tr>
+                    <td rowspan="9">IPv6</td>
+                    <td>Source Address</td>
+                    <td>${packetData.src || ''}</td>
+                </tr>
+                <tr>
+                    <td>Destination Address</td>
+                    <td>${packetData.dst || ''}</td>
+                </tr>
+                <tr>
+                    <td>Flow Label</td>
+                    <td>${packetData.flow_label || ''}</td>
+                </tr>
+                <tr>
+                    <td>Hop Limit</td>
+                    <td>${packetData.hop_limit || ''}</td>
+                </tr>
+                <tr>
+                    <td>Next Header</td>
+                    <td>${packetData.nxt || ''}</td>
+                </tr>
+                <tr>
+                    <td>Payload Length</td>
+                    <td>${packetData.payload_length || ''}</td>
+                </tr>
+                <tr>
+                    <td>Traffic Class</td>
+                    <td>${packetData.traffic_class || ''}</td>
+                </tr>
+                <tr>
+                    <td>Ext Headers</td>
+                    <td>${packetData.ext_hdrs || '[]'}</td>
+                </tr>
+                <tr>
+                    <td>Version</td>
+                    <td>${packetData.version || ''}</td>
+                </tr>
+            `;
+        }
+
+        table.appendChild(tbody);
+        tableContainer.appendChild(title);
+        tableContainer.appendChild(table);
+        messagesContainer.insertBefore(tableContainer, messagesContainer.firstChild);
+    }
+
+    socket.addEventListener('open', () => {
+        document.getElementById('status').textContent = 'Connected to server';
+    });
+
+    socket.addEventListener('message', (event) => {
+        const parsedData = parsePacketData(event.data);
+        if (parsedData.type === 'ipv4') {
+            createPacketTable(parsedData.data, 'IPv4');
+        } else if (parsedData.type === 'ipv6') {
+            createPacketTable(parsedData.data, 'IPv6');
+        }
+    });
+
+    socket.addEventListener('close', () => {
+        document.getElementById('status').textContent = 'Disconnected from server';
+    });
+
+    socket.addEventListener('error', (error) => {
+        console.error('WebSocket error:', error);
+        document.getElementById('status').textContent = 'Connection error';
+    });
+</script>
+
+</body>
+</html>
